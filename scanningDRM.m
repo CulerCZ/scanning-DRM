@@ -3,7 +3,7 @@
 [dataRaw, dataBG, posInfo] = loadRawData(...
     AlfromUKRaw20230418181452, AlfromUKBG20230418181452, pixel_coord);
 
-dataNorm.drplist = (dataRaw.drplist - dataBG.drp + dataBG.offset) * dataBG.gain;
+dataNorm.drplist = (dataRaw.drplist - dataBG.drp + 40) * dataBG.gain;
 dataNorm.drplist(dataNorm.drplist < 0) = 0;
 dataNorm.x = dataRaw.x;
 dataNorm.y = dataRaw.y;
@@ -16,16 +16,17 @@ figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
     reshape(median(dataNorm.drplist,2),dataNorm.num_x,dataNorm.num_y))
 
 %% create DRP Library and run dictionary indexing
-ang_res = 4;
-% drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
-%     fitting_para=[1,0.7,12,4,0.8,8]);
-
+ang_res = 3;
+drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
+    fitting_para=[1,0.7,12,4,0.8,8]);
+%%
+tic
 indexResult = IndexEngine_NewDRM(dataNorm.drplist, drpLib.drpList, drpLib.eulerList);
-
+toc
 %% plot indexing results
 folderpath = "/Users/chenyangzhu/Library/CloudStorage/OneDrive-NanyangTechnologicalUniversity/Research-2023/scanningDRM/dataProcessing";
 offset_values = 0:3:69;
-% errmisOri_stack = zeros(length(offset_values),n1,n2);
+errmisOri_stack = zeros(length(offset_values),n1,n2);
 for ii = 1:length(offset_values)
     dataNorm.drplist = (dataRaw.drplist - dataBG.drp + offset_values(ii)) * 20;
     dataNorm.drplist(dataNorm.drplist < 0) = 0;
@@ -65,7 +66,7 @@ for ii = 1:length(offset_values)
     clim([0 20])
     saveas(f1, fullfile(folderpath,sprintf("err_map_offset_%02d.tif",offset_values(ii))));
     close(f1)
-    errmisOri_stack(ii+19,:,:) = misOriMap;
+    errmisOri_stack(ii,:,:) = misOriMap;
     fprintf("Save error map %02d / %02d offset values.\n",[ii length(offset_values)]);
     % plot pixel-wise indexing error histogram
     f2=figure("name",sprintf("offset %d error histogram",offset_values(ii)));
@@ -101,17 +102,43 @@ xlim([1 62])
 ylabel('number of pixels')
 title('histogram of orientation error')
 
+%%
+eumap = repositionData(indexResult.Euler, dataNorm.x, dataNorm.y);
+figure, imshow(plot_ipf_map(eumap))
+
 %% quick test of the functions
-err_stack = zeros(24,2);
-for ii = 1:24
-    err_stack(ii,1) = mean(errmisOri_stack(ii,:,:),'all',"omitmissing");
-    err_stack(ii,2) = median(errmisOri_stack(ii,:,:),'all','omitmissing');
+% err_stack = zeros(24,2);
+% for ii = 1:24
+%     err_stack(ii,1) = mean(errmisOri_stack(ii,:,:),'all',"omitmissing");
+%     err_stack(ii,2) = median(errmisOri_stack(ii,:,:),'all','omitmissing');
+% end
+% figure, plot(offset_values,err_stack(:,1),'LineWidth',2)
+% hold on
+% plot(offset_values,err_stack(:,2),'LineWidth',2)
+% set(gca,'LineWidth',2,'FontSize',14)
+% legend("average error","median error")
+
+% Define file names and duration of each frame
+gifImgFolder = "C:\Users\86198\OneDrive - Nanyang Technological University\Research-2023\scanningDRM\dataProcessing";
+image_prefix = "err_histo_offset_";
+fileNames = strcat(image_prefix,sprintf("%02d.tif",offset_values(1)));
+durations = 0.5;
+
+% Initialize GIF file
+gifFileName = 'err_histo_offset.gif';
+for ii = 1:length(offset_values)
+    % Read image
+    img = imread(fullfile(gifImgFolder,strcat(image_prefix,sprintf("%02d.tif",offset_values(ii)))));
+    [ind, map] = rgb2ind(img, 256);
+    % Write image to GIF file
+    if ii == 1
+        % For first image, create new file with overwrite option
+        imwrite(ind, map, fullfile(gifImgFolder,gifFileName), 'gif', 'Loopcount', inf, 'DelayTime', durations, 'WriteMode', 'overwrite');
+    else
+        % For subsequent images, append to existing file
+        imwrite(ind, map, fullfile(gifImgFolder,gifFileName), 'gif', 'WriteMode', 'append', 'DelayTime', durations);
+    end
 end
-figure, plot(offset_values,err_stack(:,1),'LineWidth',2)
-hold on
-plot(offset_values,err_stack(:,2),'LineWidth',2)
-set(gca,'LineWidth',2,'FontSize',14)
-legend("average error","median error")
 
 %% function supporting package
 % ----------------------------------------------------------------------------
