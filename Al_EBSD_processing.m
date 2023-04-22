@@ -41,8 +41,8 @@ EUmap_ebsd(:,~isIndexedMap_ebsd) = NaN;
 EUmap_ebsd = permute(EUmap_ebsd,[2 3 1]);
 figure, imshow(imwarp(color_ebsd_temp,tform,"nearest"),'Border','tight');
 % ----------------------------------------------------------------------------
-% 
-% Scale bar to be added
+% plot scale bar according to EBSD dataset
+
 
 
 %% register EBSD and DRM dataset and compare indexing error
