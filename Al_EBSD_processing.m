@@ -53,7 +53,7 @@ colorEBSDoriginal = plot_ipf_map(EUmap_ebsd);
 if ~exist("movingPoints",'var')
     [movingPoints, refPoints] = cpselect(colorDRMoriginal,colorEBSDoriginal,'Wait',true);
 end
-tform_register = fitgeotrans(movingPoints_top,refPoints_top,'affine');
+tform_register = fitgeotrans(movingPoints,refPoints,'affine');
 output_region = imref2d(size(colorEBSDoriginal));
 EUmap_trans = imwarp(eumap,tform_register,'nearest','OutputView',output_region);
 figure, imshowpair(plot_ipf_map(EUmap_trans),colorEBSDoriginal,'montage')
@@ -65,9 +65,9 @@ eulerEBSD = reshape(EUmap_ebsd,n1*n2,3);
 cs = ebsd_temp.CSList{2};
 oriDRM = orientation.byEuler(eulerDRM.*degree,cs);
 oriEBSD = orientation.byEuler(eulerEBSD.*degree,cs);
-rot = rotation.byAxisAngle(vector3d.Y,180*degree);
+rot = rotation.byAxisAngle(vector3d.Y,0*degree);
 oriEBSD = rot*oriEBSD;
-rot = rotation.byAxisAngle(vector3d.Z,180*degree);
+rot = rotation.byAxisAngle(vector3d.Z,90*degree);
 oriEBSD = rot*oriEBSD;
 
 misOriAngle = angle(oriDRM,oriEBSD,cs)./degree;
@@ -87,6 +87,7 @@ xlabel('prediction error (deg)')
 xlim([1 62])
 ylabel('number of pixels')
 title('histogram of orientation error')
+
 %% calculate grain-wise error and plot corresponding histogram
 grainSizeThres = 20;
 num_grain = max(grainIdMap,[],'all');
@@ -106,5 +107,5 @@ histogram(misOriGrain,61,'BinLimits',[1 62],...
 set(gca,'LineWidth',1.5,'FontSize',14)
 xlabel('prediction error (deg)')
 xlim([1 62])
-ylabel('number of pixels')
+ylabel('number of grains')
 title('histogram of orientation error')
