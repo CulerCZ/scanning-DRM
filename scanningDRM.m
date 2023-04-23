@@ -2,27 +2,22 @@
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
     AlfromUKRaw20230418181452, AlfromUKBG20230418181452, pixel_coord);
+offset = 40;
 
-dataNorm.drplist = (dataRaw.drplist - dataBG.drp + 40) * dataBG.gain;
-dataNorm.drplist(dataNorm.drplist < 0) = 0;
-dataNorm.x = dataRaw.x;
-dataNorm.y = dataRaw.y;
-dataNorm.num_x = numel(unique(dataNorm.x));
-dataNorm.num_y = numel(unique(dataNorm.y));
-dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
-dataNorm.drplist(dataNorm.drplist > 1) = 1;
+dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 
 figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
     reshape(median(dataNorm.drplist,2),dataNorm.num_x,dataNorm.num_y))
 
 %% create DRP Library and run dictionary indexing
-ang_res = 3;
+ang_res = 3;   
 drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
-    fitting_para=[1,0.7,12,4,0.8,8]);
+    fitting_para=[1,0.7,25,4,0.8,8]);
 %%
-tic
 indexResult = IndexEngine_NewDRM(dataNorm.drplist, drpLib.drpList, drpLib.eulerList);
-toc
+figure, imshow(repositionData(indexResult.distance,dataNorm.x,dataNorm.y),[min(indexResult.distance),max(indexResult.distance)])
+figure, imshow(repositionData(plot_ipf_map(indexResult.Euler),dataNorm.x,dataNorm.y),Border="tight")
+
 %% plot indexing results
 folderpath = "/Users/chenyangzhu/Library/CloudStorage/OneDrive-NanyangTechnologicalUniversity/Research-2023/scanningDRM/dataProcessing";
 offset_values = 0:3:69;
@@ -112,6 +107,7 @@ for idx = 1:length(rand_idx)
     nexttile(idx)
     plotDRP(drpLib.drpList(rand_idx(idx),:), posInfo)
 end
+%%
 figure(Position=[100 100 800 800])
 tiledlayout(4,4,"TileSpacing","compact","padding","compact")
 rand_idx = randi(size(dataNorm.drplist,1),16);
@@ -171,6 +167,39 @@ function [dataRaw, dataBG, posInfo] = loadRawData(...
     posInfo.phi = pixel_coord(1,:);
     posInfo.phi = rem(270-posInfo.phi+360, 360);  % under current settings
     posInfo.theta = pixel_coord(2,:);
+    fprintf("Raw dataset is loaded!");
+end
+
+
+% create dataNorm for further processing
+function dataNorm = generateData(dataRaw, dataBG, posInfo, options)
+    arguments
+        dataRaw
+        dataBG
+        posInfo
+        options.offset (1,1) double = 40
+        options.gain (1,1) double = 20
+    end
+    dataNorm.drplist = (dataRaw.drplist - dataBG.drp + options.offset) * options.gain;
+    dataNorm.drplist(dataNorm.drplist < 0) = 0;
+    dataNorm.x = dataRaw.x;
+    dataNorm.y = dataRaw.y;
+    num_x = numel(unique(dataNorm.x));
+    num_y = numel(unique(dataNorm.y));
+    num_pixel = size(dataNorm.drplist,2);
+    dataNorm.x = reshape(dataNorm.x,num_x,num_y,1);
+    dataNorm.x(:,2:2:num_y) = flipud(dataNorm.x(:,2:2:num_y));
+    dataNorm.x = reshape(dataNorm.x,[],1);
+    dataNorm.drplist = reshape(dataNorm.drplist,num_x,num_y,num_pixel);
+    dataNorm.drplist(:,2:2:num_y,:) = flipud(dataNorm.drplist(:,2:2:num_y,:));
+    dataNorm.drplist = reshape(dataNorm.drplist,[],num_pixel);
+    dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
+    dataNorm.drplist(dataNorm.drplist > 1) = 1;
+    dataNorm.posInfo = posInfo;
+    dataNorm.num_x = num_x;
+    dataNorm.num_y = num_y;
+    dataNorm.num_pixel = num_pixel;
+    fprintf("Dataset is reday for further processing!");
 end
 
 
