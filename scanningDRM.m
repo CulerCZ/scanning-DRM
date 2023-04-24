@@ -2,7 +2,7 @@
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
     AlfromUKRaw20230418181452, AlfromUKBG20230418181452, pixel_coord);
-offset = 40;
+offset = 42;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 
@@ -14,21 +14,19 @@ ang_res = 3;
 drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
     fitting_para=[1,0.7,25,4,0.8,8]);
 %%
-indexResult = IndexEngine_NewDRM(dataNorm.drplist, drpLib.drpList, drpLib.eulerList);
-figure, imshow(repositionData(indexResult.distance,dataNorm.x,dataNorm.y),[min(indexResult.distance),max(indexResult.distance)])
-figure, imshow(repositionData(plot_ipf_map(indexResult.Euler),dataNorm.x,dataNorm.y),Border="tight")
+indexResult = IndexEngine_sDRM(dataNorm, drpLib);
+figure, imshow(indexResult.distanceMap,[min(indexResult.distance),max(indexResult.distance)])
+colormap(jet)
+figure, imshow(plot_ipf_map(indexResult.eulerMap),Border="tight")
 
 %% plot indexing results
-folderpath = "/Users/chenyangzhu/Library/CloudStorage/OneDrive-NanyangTechnologicalUniversity/Research-2023/scanningDRM/dataProcessing";
-offset_values = 0:3:69;
+folderpath = ".\results_temp";  % save result image temporarily
+offset_values = 0:3:72;
 errmisOri_stack = zeros(length(offset_values),n1,n2);
 for ii = 1:length(offset_values)
-    dataNorm.drplist = (dataRaw.drplist - dataBG.drp + offset_values(ii)) * 20;
-    dataNorm.drplist(dataNorm.drplist < 0) = 0;
-    dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
-    dataNorm.drplist(dataNorm.drplist > 1) = 1;
-    indexResult = IndexEngine_NewDRM(dataNorm.drplist, drpLib.drpList, drpLib.eulerList);
-    eumap = repositionData(indexResult.Euler, dataNorm.x, dataNorm.y);
+    dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset_values(ii));
+    indexResult = IndexEngine_sDRM(dataNorm, drpLib);
+    eumap = indexResult.eulerMap;
     
     colorDRMoriginal = plot_ipf_map(eumap);
     colorEBSDoriginal = plot_ipf_map(EUmap_ebsd);
@@ -70,6 +68,7 @@ for ii = 1:length(offset_values)
     set(gca,'LineWidth',1.5,'FontSize',14)
     xlabel('prediction error (deg)')
     xlim([1 62])
+    ylim([0 7e4])
     ylabel('number of pixels')
     saveas(f2,fullfile(folderpath,sprintf("err_histo_offset_%02d.tif",offset_values(ii))));
     close(f2)
@@ -116,25 +115,28 @@ for idx = 1:length(rand_idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
 end
 %% quick test of the functions
-% err_stack = zeros(24,2);
-% for ii = 1:24
-%     err_stack(ii,1) = mean(errmisOri_stack(ii,:,:),'all',"omitmissing");
-%     err_stack(ii,2) = median(errmisOri_stack(ii,:,:),'all','omitmissing');
-% end
-% figure, plot(offset_values,err_stack(:,1),'LineWidth',2)
-% hold on
-% plot(offset_values,err_stack(:,2),'LineWidth',2)
-% set(gca,'LineWidth',2,'FontSize',14)
-% legend("average error","median error")
+err_stack = zeros(length(offset_values),2);
+for ii = 1:length(offset_values)
+    errval_temp = reshape(errmisOri_stack(ii,:,:),[],1);
+    errval = errval_temp(~isnan(errval_temp));
+    errval = errval(errval < prctile(errval,90));
+    err_stack(ii,1) = mean(errval);
+    err_stack(ii,2) = median(errval);
+end
+figure, plot(offset_values,err_stack(:,1),'x-','LineWidth',2)
+hold on
+plot(offset_values,err_stack(:,2),'o-','LineWidth',2)
+set(gca,'LineWidth',2,'FontSize',14)
+legend("average error","median error")
 
 % Define file names and duration of each frame
-gifImgFolder = "C:\Users\86198\OneDrive - Nanyang Technological University\Research-2023\scanningDRM\dataProcessing";
-image_prefix = "err_histo_offset_";
+gifImgFolder = ".\results_temp";
+image_prefix = "err_map_offset_";
 fileNames = strcat(image_prefix,sprintf("%02d.tif",offset_values(1)));
-durations = 0.5;
+durations = 0.3;
 
 % Initialize GIF file
-gifFileName = 'err_histo_offset.gif';
+gifFileName = 'err_map_offset.gif';
 for ii = 1:length(offset_values)
     % Read image
     img = imread(fullfile(gifImgFolder,strcat(image_prefix,sprintf("%02d.tif",offset_values(ii)))));
@@ -199,7 +201,7 @@ function dataNorm = generateData(dataRaw, dataBG, posInfo, options)
     dataNorm.num_x = num_x;
     dataNorm.num_y = num_y;
     dataNorm.num_pixel = num_pixel;
-    fprintf("Dataset is reday for further processing!");
+    fprintf("Dataset is reday for further processing!\n");
 end
 
 
@@ -316,36 +318,21 @@ end
 
 
 
-function indexResult = IndexEngine_NewDRM(drp_in, drpList, eulerList, options)
+function indexResult = IndexEngine_sDRM(dataNorm, drpLib, options)
     arguments
-        drp_in
-        drpList
-        eulerList
+        dataNorm
+        drpLib
         options.verbose
     end
     % treatment on input drps: normalization, 
     % drp_in = normalizeVec(drp_in);
-    [Idx, D] = knnsearch(drpList, drp_in);
-    indexResult.Euler = eulerList(Idx,:);
+    [Idx, D] = knnsearch(drpLib.drpList, dataNorm.drplist);
+    indexResult.Euler = drpLib.eulerList(Idx,:);
     indexResult.Idx = Idx;
     indexResult.distance = D;
-end
-
-
-% function to re-position the datapoints as pos_x and pos_y
-% BUT, just make it use for now...
-function dataRepos = repositionData(data, posx, posy)
-    numlayer = size(data,2);
-    numx = numel(unique(posx));
-    numy = numel(unique(posy));
-    % idx_x = (posx-min(posx))/((max(posx)-min(posx))/(numx-1))+1;
-    % idx_y = (posy-min(posy))/((max(posy)-min(posy))/(numy-1))+1;
-    dataRepos = zeros(numx,numy,numlayer);
-    for ii = 1:numlayer
-        datalayer_temp = reshape(data(:,ii),numx,numy);
-        datalayer_temp(:,1:2:end) = flipud(datalayer_temp(:,1:2:end));
-        dataRepos(:,:,ii) = datalayer_temp;
-    end
+    indexResult.eulerMap = reshape(indexResult.Euler,dataNorm.num_x,dataNorm.num_y,3);
+    indexResult.idxMap = reshape(indexResult.Idx,dataNorm.num_x,dataNorm.num_y);
+    indexResult.distanceMap = reshape(indexResult.distance,dataNorm.num_x,dataNorm.num_y);
 end
 
 
