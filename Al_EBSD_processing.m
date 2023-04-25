@@ -1,6 +1,6 @@
 %% EBSD stitching
 rot = rotation.byAxisAngle(vector3d.Y,0*degree);
-ebsd_temp = rotate(ebsd_top,rot);
+ebsd_temp = rotate(ebsd_bot,rot);
 [grains, ebsd_temp.grainId] = calcGrains(ebsd_temp('indexed'),10*degree);
 figure, plot(ebsd_temp('indexed'),ebsd_temp('indexed').orientations,'micronbar','off');
 hold on
@@ -47,7 +47,7 @@ figure, imshow(imwarp(color_ebsd_temp,tform,"nearest"),'Border','tight');
 
 %% register EBSD and DRM dataset and compare indexing error
 % register two datasets
-EUmap = eumap;
+eumap = indexResult.eulerMap;
 colorDRMoriginal = plot_ipf_map(eumap);
 colorEBSDoriginal = plot_ipf_map(EUmap_ebsd);
 if ~exist("movingPoints",'var')
@@ -85,6 +85,7 @@ histogram(misOriMap,61,'BinLimits',[1 62],...
 set(gca,'LineWidth',1.5,'FontSize',14)
 xlabel('prediction error (deg)')
 xlim([1 62])
+ylim([0 7e4])
 ylabel('number of pixels')
 title('histogram of orientation error')
 
@@ -98,7 +99,7 @@ for ii = 1:num_grain
         continue
     else
         misOri_temp = misOriMap(grainIdMap == ii);
-        misOriGrain(ii) = mean(misOri_temp(misOri_temp < prctile(misOri_temp,90)));
+        misOriGrain(ii) = median(misOri_temp(misOri_temp < prctile(misOri_temp,80)));
     end
 end
 figure,
@@ -109,3 +110,22 @@ xlabel('prediction error (deg)')
 xlim([1 62])
 ylabel('number of grains')
 title('histogram of orientation error')
+
+%% 
+misOri = [reshape(misOriMap_top,[],1); reshape(misOriMap_bot,[],1)];
+misOri = misOri(~isnan(misOri));
+figure,
+histogram(misOri,61,'BinLimits',[1 62],...
+    'EdgeColor','k','EdgeAlpha',0.5,'FaceColor','#0072BD','FaceAlpha',1)
+set(gca,'LineWidth',1.5,'FontSize',14)
+xlabel('prediction error (deg)')
+xlim([1 62])
+ylim([0 1e5])
+ylabel('number of pixels')
+title('histogram of orientation error')
+
+
+%% plot on indexing error IPF map
+ figure, plotIPDF(oriEBSD,misOriAngle,vector3d.Z,...
+     'points',length(oriEBSD),'MarkerSize',1)
+ colormap("jet")
