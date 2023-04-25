@@ -13,7 +13,7 @@ figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
 ang_res = 3;   
 drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
     fitting_para=[1,0.7,25,4,0.8,8]);
-%%
+
 indexResult = IndexEngine_sDRM(dataNorm, drpLib);
 figure, imshow(indexResult.distanceMap,[min(indexResult.distance),max(indexResult.distance)])
 colormap(jet)
@@ -115,42 +115,19 @@ for idx = 1:length(rand_idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
 end
 %% quick test of the functions
-err_stack = zeros(length(offset_values),2);
-for ii = 1:length(offset_values)
-    errval_temp = reshape(errmisOri_stack(ii,:,:),[],1);
-    errval = errval_temp(~isnan(errval_temp));
-    errval = errval(errval < prctile(errval,90));
-    err_stack(ii,1) = mean(errval);
-    err_stack(ii,2) = median(errval);
-end
-figure, plot(offset_values,err_stack(:,1),'x-','LineWidth',2)
-hold on
-plot(offset_values,err_stack(:,2),'o-','LineWidth',2)
-set(gca,'LineWidth',2,'FontSize',14)
-legend("average error","median error")
-
-% Define file names and duration of each frame
-gifImgFolder = ".\results_temp";
-image_prefix = "err_map_offset_";
-fileNames = strcat(image_prefix,sprintf("%02d.tif",offset_values(1)));
-durations = 0.3;
-
-% Initialize GIF file
-gifFileName = 'err_map_offset.gif';
-for ii = 1:length(offset_values)
-    % Read image
-    img = imread(fullfile(gifImgFolder,strcat(image_prefix,sprintf("%02d.tif",offset_values(ii)))));
-    [ind, map] = rgb2ind(img, 256);
-    % Write image to GIF file
-    if ii == 1
-        % For first image, create new file with overwrite option
-        imwrite(ind, map, fullfile(gifImgFolder,gifFileName), 'gif', 'Loopcount', inf, 'DelayTime', durations, 'WriteMode', 'overwrite');
-    else
-        % For subsequent images, append to existing file
-        imwrite(ind, map, fullfile(gifImgFolder,gifFileName), 'gif', 'WriteMode', 'append', 'DelayTime', durations);
-    end
+dataKernel = kernelSmooth(dataNorm,kernelSize=2);
+figure(Position=[100 100 800 400])
+tiledlayout(2,4,"TileSpacing","compact","padding","compact")
+rand_idx = randi(size(dataKernel.drplist,1),4);
+for idx = 1:length(rand_idx)
+    nexttile(idx)
+    plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
+    nexttile(idx+length(rand_idx))
+    plotDRP(dataKernel.drplist(rand_idx(idx),:), posInfo)
 end
 
+indexResult_kernel = IndexEngine_sDRM(dataKernel, drpLib);
+figure, imshow(plot_ipf_map(indexResult_kernel.eulerMap),Border="tight")
 %% function supporting package
 % ----------------------------------------------------------------------------
 % function to load data
@@ -169,7 +146,7 @@ function [dataRaw, dataBG, posInfo] = loadRawData(...
     posInfo.phi = pixel_coord(1,:);
     posInfo.phi = rem(270-posInfo.phi+360, 360);  % under current settings
     posInfo.theta = pixel_coord(2,:);
-    fprintf("Raw dataset is loaded!");
+    fprintf("Raw dataset is loaded!\n");
 end
 
 
@@ -333,6 +310,7 @@ function indexResult = IndexEngine_sDRM(dataNorm, drpLib, options)
     indexResult.eulerMap = reshape(indexResult.Euler,dataNorm.num_x,dataNorm.num_y,3);
     indexResult.idxMap = reshape(indexResult.Idx,dataNorm.num_x,dataNorm.num_y);
     indexResult.distanceMap = reshape(indexResult.distance,dataNorm.num_x,dataNorm.num_y);
+    fprintf("Orientation indexing finished!\n")
 end
 
 
@@ -401,3 +379,33 @@ function plotDRP(drplist, posInfo, options)
     colormap(options.cMap)
     set(gca,"Visible","off")
 end
+
+
+% apply kernel smoothing on DRM original dataset
+function datakernel = kernelSmooth(dataNorm,options)
+    arguments
+        dataNorm struct
+        options.kernelSize (1,1) double = 1
+    end
+    datakernel = dataNorm;
+    % seeking the adjacent neighbors within the preset kernel size
+    num_x = dataNorm.num_x;
+    num_y = dataNorm.num_y;
+    num_datapoints = size(dataNorm.drplist,2);
+    dataMap = reshape(dataNorm.drplist, num_x, num_y, num_datapoints);
+    switch options.kernelSize
+        case 1
+            kernel = [0 1 0; 1 1 1; 0 1 0];
+        case 2
+            kernel = ones(3);
+        otherwise
+            kernel = 1;
+    end
+    kernel = kernel / sum(kernel,"all");  % rescale the kernel value
+    for ii = 1:num_datapoints
+        dataMap(:,:,ii) = conv2(dataMap(:,:,ii), kernel, "same");
+    end
+    datakernel.drplist = reshape(dataMap,[],num_datapoints);
+    fprintf("Kernel processing finished!\n")
+end
+
