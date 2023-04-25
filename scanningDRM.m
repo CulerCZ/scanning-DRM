@@ -1,8 +1,8 @@
 %% scanning DRM data processing script
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
-    AlfromUKRaw20230418181452, AlfromUKBG20230418181452, pixel_coord);
-offset = 42;
+    AlEJMdefocusRaw20230425125522, AlEJMdefocusBG20230425125522, pixel_coord);
+offset = 40;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 
@@ -13,7 +13,7 @@ figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
 ang_res = 3;   
 drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
     fitting_para=[1,0.7,25,4,0.8,8]);
-
+%%
 indexResult = IndexEngine_sDRM(dataNorm, drpLib);
 figure, imshow(indexResult.distanceMap,[min(indexResult.distance),max(indexResult.distance)])
 colormap(jet)
@@ -115,19 +115,19 @@ for idx = 1:length(rand_idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
 end
 %% quick test of the functions
-dataKernel = kernelSmooth(dataNorm,kernelSize=2);
-figure(Position=[100 100 800 400])
-tiledlayout(2,4,"TileSpacing","compact","padding","compact")
-rand_idx = randi(size(dataKernel.drplist,1),4);
-for idx = 1:length(rand_idx)
-    nexttile(idx)
-    plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
-    nexttile(idx+length(rand_idx))
-    plotDRP(dataKernel.drplist(rand_idx(idx),:), posInfo)
-end
+dataKernel = kernelSmooth(dataNorm,kernelSize=1);
+% figure(Position=[100 100 800 400])
+% tiledlayout(2,4,"TileSpacing","compact","padding","compact")
+% rand_idx = randi(size(dataKernel.drplist,1),4);
+% for idx = 1:length(rand_idx)
+%     nexttile(idx)
+%     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
+%     nexttile(idx+length(rand_idx))
+%     plotDRP(dataKernel.drplist(rand_idx(idx),:), posInfo)
+% end
 
-indexResult_kernel = IndexEngine_sDRM(dataKernel, drpLib);
-figure, imshow(plot_ipf_map(indexResult_kernel.eulerMap),Border="tight")
+indexResult_kernel_1 = IndexEngine_sDRM(dataKernel, drpLib);
+% figure, imshow(plot_ipf_map(indexResult_kernel_2.eulerMap),Border="tight")
 %% function supporting package
 % ----------------------------------------------------------------------------
 % function to load data
@@ -159,25 +159,35 @@ function dataNorm = generateData(dataRaw, dataBG, posInfo, options)
         options.offset (1,1) double = 40
         options.gain (1,1) double = 20
     end
-    dataNorm.drplist = (dataRaw.drplist - dataBG.drp + options.offset) * options.gain;
-    dataNorm.drplist(dataNorm.drplist < 0) = 0;
-    dataNorm.x = dataRaw.x;
-    dataNorm.y = dataRaw.y;
-    num_x = numel(unique(dataNorm.x));
-    num_y = numel(unique(dataNorm.y));
-    num_pixel = size(dataNorm.drplist,2);
-    dataNorm.x = reshape(dataNorm.x,num_x,num_y,1);
-    dataNorm.x(:,2:2:num_y) = flipud(dataNorm.x(:,2:2:num_y));
-    dataNorm.x = reshape(dataNorm.x,[],1);
-    dataNorm.drplist = reshape(dataNorm.drplist,num_x,num_y,num_pixel);
-    dataNorm.drplist(:,2:2:num_y,:) = flipud(dataNorm.drplist(:,2:2:num_y,:));
-    dataNorm.drplist = reshape(dataNorm.drplist,[],num_pixel);
-    dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
-    dataNorm.drplist(dataNorm.drplist > 1) = 1;
-    dataNorm.posInfo = posInfo;
+    
+    pos_x = sort(unique(dataRaw.x),"ascend");
+    pos_y = sort(unique(dataRaw.y),"ascend");
+    [xx, yy] = meshgrid(pos_x, pos_y);
+    num_x = numel(pos_x);
+    num_y = numel(pos_y);
+    num_pixel = size(dataRaw.drplist,2);
+    
+    dataNorm.drpMap = nan(num_x, num_y, num_pixel);
+    for idx = 1:length(dataRaw.x)
+        x_temp = dataRaw.x(idx);
+        y_temp = dataRaw.y(idx);
+        dataNorm.drpMap(pos_x == x_temp, pos_y == y_temp, :) = ...
+            dataRaw.drplist(idx, :) - dataBG.drp;
+    end
+    
+    dataNorm.x = reshape(xx, [], 1);
+    dataNorm.y = reshape(yy, [], 1);
     dataNorm.num_x = num_x;
     dataNorm.num_y = num_y;
     dataNorm.num_pixel = num_pixel;
+    
+    dataNorm.drplist = reshape(dataNorm.drpMap, [], num_pixel);
+    dataNorm.drplist = (dataNorm.drplist + options.offset) * options.gain;
+    dataNorm.drplist(dataNorm.drplist < 0) = 0;
+    dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
+    dataNorm.drplist(dataNorm.drplist > 1) = 1;
+    dataNorm.posInfo = posInfo;
+
     fprintf("Dataset is reday for further processing!\n");
 end
 
