@@ -1,20 +1,17 @@
-[misOriMap_top_kernel, oriEBSD_top, misOriAngle_top] = errAnalyzeAl( ...
-    ebsd_top, indexResult_kernel.eulerMap, movingPoints_top, refPoints_top);
-[misOriMap_bot_kernel, oriEBSD_bot, misOriAngle_bot] = errAnalyzeAl( ...
-    ebsd_bot, indexResult_kernel.eulerMap, movingPoints_bot, refPoints_bot);
+[misOriMap_top_kernel_02, oriEBSD_top, misOriAngle_top_02] = errAnalyzeAl( ...
+    ebsd_top, indexResult_kernel_1.eulerMap, movingPoints_top, refPoints_top);
+[misOriMap_bot_kernel_02, oriEBSD_bot, misOriAngle_bot_02] = errAnalyzeAl( ...
+    ebsd_bot, indexResult_kernel_1.eulerMap, movingPoints_bot, refPoints_bot);
 %% 
-figure, imshow(misOriMap_top_kernel,Border="tight")
+figure, imshow(misOriMap_top_kernel_02,Border="tight")
 colormap(jet)
 clim([0 20])
 
-figure, imshow(misOriMap_bot_kernel,Border="tight")
+figure, imshow(misOriMap_bot_kernel_02,Border="tight")
 colormap(jet)
 clim([0 20])
 
-% figure, plotIPDF(oriEBSD,misOriAngle,vector3d.Z,'points',length(oriEBSD),'MarkerSize',1)
-    % colormap("jet")
-
-misOri = [reshape(misOriMap_top_kernel,[],1); reshape(misOriMap_bot_kernel,[],1)];
+misOri = [reshape(misOriMap_top_kernel_02,[],1); reshape(misOriMap_bot_kernel_02,[],1)];
 misOri = misOri(~isnan(misOri));
 figure,
 histogram(misOri,61,'BinLimits',[1 62],...
@@ -25,6 +22,10 @@ xlim([1 62])
 ylim([0 1.5e5])
 ylabel('number of pixels')
 title('histogram of orientation error')
+
+%% plot error on inverse pole figure
+figure, plotIPDF([oriEBSD_top,oriEBSD_bot],[misOriAngle_top_02;misOriAngle_bot_02],vector3d.Z,'points',1e6,'MarkerSize',1)
+colormap("jet")
 
 %% functions used in this script
 function [misOriMap, oriEBSD, misOriAngle] = errAnalyzeAl( ...
@@ -111,18 +112,18 @@ function [misOriMap, oriEBSD, misOriAngle] = errAnalyzeAl( ...
         title('histogram of orientation error')
     end
 
-    % grainSizeThres = 20;
-    % num_grain = max(grainIdMap,[],'all');
-    % misOriGrain = zeros(num_grain,1);
-    % for ii = 1:num_grain
-    %     if sum(grainIdMap == ii,"all") < grainSizeThres
-    %         misOriGrain(ii) = NaN;
-    %         continue
-    %     else
-    %         misOri_temp = misOriMap(grainIdMap == ii);
-    %         misOriGrain(ii) = median(misOri_temp(misOri_temp < prctile(misOri_temp,80)));
-    %     end
-    % end
+    grainSizeThres = 20;
+    num_grain = max(grainIdMap,[],'all');
+    misOriGrain = zeros(num_grain,1);
+    for ii = 1:num_grain
+        if sum(grainIdMap == ii,"all") < grainSizeThres
+            misOriGrain(ii) = NaN;
+            continue
+        else
+            misOri_temp = misOriMap(grainIdMap == ii);
+            misOriGrain(ii) = median(misOri_temp(misOri_temp < prctile(misOri_temp,80)));
+        end
+    end
     % 
     % figure, histogram(misOriGrain,61,'BinLimits',[1 62],...
     %     'EdgeColor','k','EdgeAlpha',0.5,'FaceColor','#0072BD','FaceAlpha',1)
