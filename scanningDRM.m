@@ -1,8 +1,8 @@
 %% scanning DRM data processing script
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
-    AlEJMdefocusRaw20230425125522, AlEJMdefocusBG20230425125522, pixel_coord);
-offset = 40;
+    CuEJM1Raw20230426173757, CuEJM1BG20230426173757, pixel_coord);
+offset = 20;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 
@@ -11,7 +11,7 @@ figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
 
 %% create DRP Library and run dictionary indexing
 ang_res = 3;   
-drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
+drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,1,1], ...
     fitting_para=[1,0.7,25,4,0.8,8]);
 %%
 indexResult = IndexEngine_sDRM(dataNorm, drpLib);
@@ -109,11 +109,14 @@ end
 %%
 figure(Position=[100 100 800 800])
 tiledlayout(4,4,"TileSpacing","compact","padding","compact")
-rand_idx = randi(size(dataNorm.drplist,1),16);
+rand_idx = randi(size(dataNorm.drplist,1 ),16);
 for idx = 1:length(rand_idx)
     nexttile(idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
 end
+
+%% select DRPs to be shown
+drp_selected = showSampleDRP(dataNorm, posInfo);
 %% quick test of the functions
 dataKernel = kernelSmooth(dataNorm,kernelSize=1);
 % figure(Position=[100 100 800 400])
@@ -419,3 +422,44 @@ function datakernel = kernelSmooth(dataNorm,options)
     fprintf("Kernel processing finished!\n")
 end
 
+
+% select position to show corresponding DRPs
+function drp_selected = showSampleDRP(dataNorm, posInfo, options)
+    arguments
+        dataNorm struct
+        posInfo struct
+        options.cMap (1,1) string = "jet"
+    end
+    figure('Name','demo_fig');
+    fig_temp = mean(dataNorm.drpMap,3);
+    imshow(fig_temp,[min(fig_temp,[],"all"),max(fig_temp,[],"all")],'Border','tight');
+    [x,y] = ginput;
+    % press 'enter' to stop
+    nn = length(y);
+    y = fix(y);
+    x = fix(x);
+    close(findobj('type','figure','name','demo_fig'));
+    
+    figure('Position',[200,200,200*(nn+1),200])
+    tiledlayout(1,nn+1,'TileSpacing','tight','Padding','compact')
+    nexttile(1)
+    imshow(fig_temp,[min(fig_temp,[],"all"),max(fig_temp,[],"all")],'Border','tight')
+    hold on
+    scatter(x,y,72,'x','k')
+    for ii = 1:nn
+        text(x(ii)+5,y(ii)+5,int2str(ii),'FontSize',14)
+    end
+    hold off
+    
+    drp_selected = zeros(nn,dataNorm.num_pixel);
+    
+    for ii = 1:nn
+        % DRP from measurement 
+        nexttile(ii+1)
+        x_pos = y(ii);
+        y_pos = x(ii);
+        drp_selected(ii,:) = squeeze(dataNorm.drpMap(x_pos,y_pos,:));
+        plotDRP(drp_selected(ii,:), posInfo)
+        colormap(options.cMap)
+    end
+end
