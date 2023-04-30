@@ -1,6 +1,6 @@
 %% EBSD stitching
 rot = rotation.byAxisAngle(vector3d.Y,0*degree);
-ebsd_temp = rotate(ebsd_bot,rot);
+ebsd_temp = rotate(ebsd_top,rot);
 [grains, ebsd_temp.grainId] = calcGrains(ebsd_temp('indexed'),10*degree);
 figure, plot(ebsd_temp('indexed'),ebsd_temp('indexed').orientations,'micronbar','off');
 hold on
@@ -36,6 +36,7 @@ tformMat = [1 0 0; shiftVal 1 0; 0 0 1];
 tform = affinetform2d(tformMat);
 EUmap_ebsd = imwarp(EUmap_temp,tform,'nearest');
 isIndexedMap_ebsd = imwarp(isIndexedMap,tform,"nearest");
+grainIdMap_ebsd = imwarp(grainIdMap,tform,"nearest");
 EUmap_ebsd = permute(EUmap_ebsd,[3 1 2]);
 EUmap_ebsd(:,~isIndexedMap_ebsd) = NaN;
 EUmap_ebsd = permute(EUmap_ebsd,[2 3 1]);
@@ -91,14 +92,16 @@ title('histogram of orientation error')
 
 %% calculate grain-wise error and plot corresponding histogram
 grainSizeThres = 20;
-num_grain = max(grainIdMap,[],'all');
+num_grain = max(grainIdMap_ebsd,[],'all');
 misOriGrain = zeros(num_grain,1);
 for ii = 1:num_grain
-    if sum(grainIdMap == ii,"all") < grainSizeThres
+    if sum(grainIdMap_ebsd == ii,"all") < grainSizeThres
         misOriGrain(ii) = NaN;
         continue
     else
-        misOri_temp = misOriMap(grainIdMap == ii);
+        misOri_temp = misOriMap(grainIdMap_ebsd == ii);
+        grainiiMap = grainIdMap_ebsd == ii;
+        
         misOriGrain(ii) = median(misOri_temp(misOri_temp < prctile(misOri_temp,80)));
     end
 end
@@ -110,7 +113,12 @@ xlabel('prediction error (deg)')
 xlim([1 62])
 ylabel('number of grains')
 title('histogram of orientation error')
-
+%%
+figure, plotIPDF(oriEBSD,misOriAngle,vector3d.Z,'points',5e5,'MarkerSize',1)
+colormap("jet")
+%%
+figure, plotIPDF([oriEBSD_top,oriEBSD_bot],[misOriAngle_top_02;misOriAngle_bot_02],vector3d.Z,'points',1e6,'MarkerSize',1)
+colormap("jet")
 %% 
 misOri = [reshape(misOriMap_top,[],1); reshape(misOriMap_bot,[],1)];
 misOri = misOri(~isnan(misOri));
@@ -126,6 +134,6 @@ title('histogram of orientation error')
 
 
 %% plot on indexing error IPF map
- figure, plotIPDF(oriEBSD,misOriAngle,vector3d.Z,...
-     'points',length(oriEBSD),'MarkerSize',1)
- colormap("jet")
+figure, plotIPDF(oriEBSD,misOriAngle,vector3d.Z,...
+ 'points',length(oriEBSD),'MarkerSize',1)
+colormap("jet")
