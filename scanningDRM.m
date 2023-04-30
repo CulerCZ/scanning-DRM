@@ -117,6 +117,8 @@ end
 
 %% select DRPs to be shown
 drp_selected = showSampleDRP(dataNorm, posInfo);
+
+
 %% quick test of the functions
 dataKernel = kernelSmooth(dataNorm,kernelSize=1);
 % figure(Position=[100 100 800 400])
