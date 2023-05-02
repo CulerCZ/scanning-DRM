@@ -1,8 +1,8 @@
 %% scanning DRM data processing script
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
-    CuEJM1Raw20230426173757, CuEJM1BG20230426173757, pixel_coord);
-offset = 20;
+    AlEJMdefocusRaw20230425125522, AlEJMdefocusBG20230425125522, pixel_coord);
+offset = 40;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 
@@ -11,7 +11,7 @@ figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
 
 %% create DRP Library and run dictionary indexing
 ang_res = 3;   
-drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,1,1], ...
+drpLib = createDRPLib(posInfo, ang_res*degree, faceting=[1,0,0], ...
     fitting_para=[1,0.7,25,4,0.8,8]);
 %%
 indexResult = IndexEngine_sDRM(dataNorm, drpLib);
@@ -109,7 +109,7 @@ end
 %%
 figure(Position=[100 100 800 800])
 tiledlayout(4,4,"TileSpacing","compact","padding","compact")
-rand_idx = randi(size(dataNorm.drplist,1 ),16);
+rand_idx = randi(size(dataNorm.drplist,1),16);
 for idx = 1:length(rand_idx)
     nexttile(idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
@@ -118,7 +118,12 @@ end
 %% select DRPs to be shown
 drp_selected = showSampleDRP(dataNorm, posInfo);
 
-
+%% check indexing results
+% checkIndexResult(dataNorm, indexResult);
+rot = rotation.byAxisAngle(vector3d.Z,90*degree);
+ebsd_temp = rotate(ebsd_top,rot);
+idList = [141151 124938 262255 282098 446028];
+plotDRPfromEBSD(dataNorm.posInfo,ebsd_temp,idList);
 %% quick test of the functions
 dataKernel = kernelSmooth(dataNorm,kernelSize=1);
 % figure(Position=[100 100 800 400])
@@ -189,8 +194,13 @@ function dataNorm = generateData(dataRaw, dataBG, posInfo, options)
     dataNorm.drplist = reshape(dataNorm.drpMap, [], num_pixel);
     dataNorm.drplist = (dataNorm.drplist + options.offset) * options.gain;
     dataNorm.drplist(dataNorm.drplist < 0) = 0;
+    % dataNorm.drpMap = (dataNorm.drpMap + options.offset) * options.gain;
+    % dataNorm.drpMap(dataNorm.drpMap < 0) = 0;
     dataNorm.drplist = dataNorm.drplist / prctile(dataNorm.drplist,95,"all");
+    % dataNorm.drpMap = dataNorm.drpMap / prctile(dataNorm.drplist,95,"all");
     dataNorm.drplist(dataNorm.drplist > 1) = 1;
+    % dataNorm.drpMap(dataNorm.drpMap > 1) = 1;
+    dataNorm.drpMap = reshape(dataNorm.drplist,num_x,num_y,num_pixel);
     dataNorm.posInfo = posInfo;
 
     fprintf("Dataset is reday for further processing!\n");
@@ -433,8 +443,9 @@ function drp_selected = showSampleDRP(dataNorm, posInfo, options)
         options.cMap (1,1) string = "jet"
     end
     figure('Name','demo_fig');
-    fig_temp = mean(dataNorm.drpMap,3);
+    fig_temp = median(dataNorm.drpMap,3);
     imshow(fig_temp,[min(fig_temp,[],"all"),max(fig_temp,[],"all")],'Border','tight');
+    colormap("parula")
     [x,y] = ginput;
     % press 'enter' to stop
     nn = length(y);
@@ -463,5 +474,77 @@ function drp_selected = showSampleDRP(dataNorm, posInfo, options)
         drp_selected(ii,:) = squeeze(dataNorm.drpMap(x_pos,y_pos,:));
         plotDRP(drp_selected(ii,:), posInfo)
         colormap(options.cMap)
+    end
+end
+
+
+% function to compare DRP measurement and indexed outcome
+function [posList] = checkIndexResult(dataNorm, indexResult, options)
+    arguments
+        dataNorm
+        indexResult
+        options.cMap (1,1) string = "jet"
+        options.faceting (1,3) double = [1 0 0]
+        options.fitting_para (1,6) double = [1,0.7,25,4,0.8,8]
+    end
+    indexEulerMap = reshape(indexResult.Euler,dataNorm.num_x,dataNorm.num_y,3);
+    figure("Name","Index Result");
+    imshow(plot_ipf_map(indexResult.eulerMap),"Border","tight")
+    [x,y] = ginput;
+    % press 'enter' to stop
+    nn = length(y);
+    y = fix(y);
+    x = fix(x);
+    close(findobj("type","figure","name","Index Result"));
+    posList = [y; x];
+
+    drp_selected = zeros(nn,dataNorm.num_pixel);
+    figure('Position',[100,100,200*(nn),200*2])
+    tiledlayout(2,nn,'TileSpacing','tight','Padding','compact')
+    for ii = 1:nn
+        % DRP from measurement 
+        ax = nexttile(ii);
+        x_pos = y(ii);
+        y_pos = x(ii);
+        drp_selected(ii,:) = squeeze(dataNorm.drpMap(x_pos,y_pos,:));
+        plotDRP(drp_selected(ii,:), dataNorm.posInfo)
+        colormap(ax, options.cMap)
+        ax = nexttile(ii+nn);
+        plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexEulerMap(x_pos,y_pos,:)), ...
+            options.faceting, options.fitting_para), dataNorm.posInfo);
+        colormap(ax, options.cMap)
+    end
+    
+    figure,
+    imshow(plot_ipf_map(indexResult.eulerMap),"Border","tight")
+    hold on
+    scatter(x,y,72,'filled','o','black')
+    for ii = 1:nn
+        text(x(ii)+5,y(ii)+5,int2str(ii),'FontSize',14,'FontWeight','bold')
+    end
+    hold off
+end
+
+
+% plot DRPs based on EBSD ground truth by EBSD Id
+function plotDRPfromEBSD(posInfo,ebsd,idList,options)
+    arguments
+        posInfo
+        ebsd
+        idList (1,:) double
+        options.cMap (1,1) string = "jet"
+        options.faceting (1,3) double = [1 0 0]
+        options.fitting_para (1,6) double = [1,0.7,25,4,0.8,8]
+    end
+    nn = length(idList);
+    figure('Position',[100,100,200*(nn),200])
+    tiledlayout(1,nn,'TileSpacing','tight','Padding','compact')
+    for ii = 1:length(idList)
+        ax = nexttile(ii);
+        rotTemp = ebsd(idList(ii)).rotations;
+        eulerTemp = [rotTemp.phi1, rotTemp.Phi, rotTemp.phi2] ./ degree;
+        plotDRP(drpSimCone(posInfo, eulerTemp, ...
+            options.faceting, options.fitting_para), posInfo);
+        colormap(ax,options.cMap)
     end
 end
