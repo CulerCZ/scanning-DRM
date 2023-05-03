@@ -116,14 +116,55 @@ for idx = 1:length(rand_idx)
 end
 
 %% select DRPs to be shown
-drp_selected = showSampleDRP(dataNorm, posInfo);
+drp_selected = showSampleDRP(dataKernel, posInfo);
 
 %% check indexing results
-% checkIndexResult(dataNorm, indexResult);
-rot = rotation.byAxisAngle(vector3d.Z,90*degree);
-ebsd_temp = rotate(ebsd_top,rot);
-idList = [141151 124938 262255 282098 446028];
-plotDRPfromEBSD(dataNorm.posInfo,ebsd_temp,idList);
+checkDetail = checkIndexResult(dataKernel, indexResult_kernel_1);
+% rot = rotation.byAxisAngle(vector3d.Z,90*degree);
+% ebsd_temp = rotate(ebsd_top,rot);
+% idList = [141151 124938 262255 282098 446028];
+% idList = [290283 655599 493316 450837 173017];
+% plotDRPfromEBSD(dataNorm.posInfo,ebsd_temp,idList);
+%% test new indexing engine with 5 cancidates
+k_temp = 10;
+dataSelected.drplist = checkDetail.drpSelected;
+dataSelected.posInfo = dataKernel.posInfo;
+dataSelected.num_x = 1;
+dataSelected.num_y = 5;
+dataSelected.drpMap = reshape(dataSelected.drplist,1,5,608);
+indexResultShort = IndexEngine_sDRM(dataSelected, drpLib, K=k_temp);
+
+% figure(Position=[100 100 200*k_temp 1000])
+% tiledlayout(5,k_temp,"TileSpacing","compact","Padding","compact")
+% for ii = 1:5
+%     for jj = 1:k_temp
+%         nexttile((ii-1)*k_temp+jj)
+%         plotDRP(drpLib.drpList(indexResultShort.Idx(ii,jj),:),dataNorm.posInfo);
+%         fprintf("plotting %d / %d subfigures...\n",[(ii-1)*k_temp+jj, 5*k_temp])
+%     end
+% end
+
+drpEBSDtruth = zeros(5, dataNorm.num_pixel);
+distanceEBSD = zeros(5, 2);
+idList = [290283 655599 493316 450837 173017];
+figure(Position=[100 100 600 1000])
+tiledlayout(5,3,"TileSpacing","compact","Padding","compact")
+for ii = 1:5
+    rotTemp = ebsd_temp(idList(ii)).rotations;
+    eulerTemp = [rotTemp.phi1, rotTemp.Phi, rotTemp.phi2] ./ degree;
+    drpEBSDtruth(ii,:) = drpSimCone(posInfo, eulerTemp);
+    distanceEBSD(ii,1) = norm(drpEBSDtruth(ii,:)-checkDetail.drpSelected(ii,:));
+    distanceEBSD(ii,2) = indexResultShort.distance(ii,1);
+    nexttile(ii*3-1)
+    plotDRP(drpEBSDtruth(ii,:),posInfo)
+    nexttile(ii*3-2)
+    plotDRP(checkDetail.drpSelected(ii,:),posInfo)
+    nexttile(ii*3)
+    plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),posInfo)
+end
+
+    
+
 %% quick test of the functions
 dataKernel = kernelSmooth(dataNorm,kernelSize=1);
 % figure(Position=[100 100 800 400])
@@ -138,6 +179,11 @@ dataKernel = kernelSmooth(dataNorm,kernelSize=1);
 
 indexResult_kernel_1 = IndexEngine_sDRM(dataKernel, drpLib);
 % figure, imshow(plot_ipf_map(indexResult_kernel_2.eulerMap),Border="tight")
+%%
+figure("Position",[100 100 300 300])
+plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexResult.eulerMap(100,100,:))),dataNorm.posInfo)
+
+
 %% function supporting package
 % ----------------------------------------------------------------------------
 % function to load data
@@ -258,7 +304,7 @@ function drpList = drpSimCone(posInfo, eulerAngle, faceting, fitting_para)
         posInfo (1,1) struct  % column 1 for phi, column 2 for theta
         eulerAngle (1,3) double = [0,0,0]
         faceting (1,3) double = [1,0,0]
-        fitting_para (1,6) double = [1,0.7,12,4,0.8,8]
+        fitting_para (1,6) double = [1,0.7,25,4,0.8,8]
     end
     
     eu1 = eulerAngle(1);
@@ -324,17 +370,17 @@ function indexResult = IndexEngine_sDRM(dataNorm, drpLib, options)
     arguments
         dataNorm
         drpLib
-        options.verbose
+        options.K (1,1) double = 1
     end
     % treatment on input drps: normalization, 
     % drp_in = normalizeVec(drp_in);
-    [Idx, D] = knnsearch(drpLib.drpList, dataNorm.drplist);
-    indexResult.Euler = drpLib.eulerList(Idx,:);
+    [Idx, D] = knnsearch(drpLib.drpList, dataNorm.drplist, K=options.K);
+    indexResult.Euler = drpLib.eulerList(Idx(:,1),:);
     indexResult.Idx = Idx;
     indexResult.distance = D;
     indexResult.eulerMap = reshape(indexResult.Euler,dataNorm.num_x,dataNorm.num_y,3);
-    indexResult.idxMap = reshape(indexResult.Idx,dataNorm.num_x,dataNorm.num_y);
-    indexResult.distanceMap = reshape(indexResult.distance,dataNorm.num_x,dataNorm.num_y);
+    indexResult.idxMap = reshape(indexResult.Idx,dataNorm.num_x,dataNorm.num_y,options.K);
+    indexResult.distanceMap = reshape(indexResult.distance(:,1),dataNorm.num_x,dataNorm.num_y);
     fprintf("Orientation indexing finished!\n")
 end
 
@@ -344,8 +390,9 @@ function plotDRP(drplist, posInfo, options)
     arguments
         drplist
         posInfo
-        options.cMap (1,1) string = "jet"
+        options.cMap (1,1) string = "Parula"
         options.type (1,1) string = "3d"
+        options.caxis (1,2) double = [0,1]
     end
     nn = length(posInfo.phi);
     theta_list_original = sort(unique(posInfo.theta),'ascend');
@@ -401,8 +448,11 @@ function plotDRP(drplist, posInfo, options)
     end
     % axis and plot setting
     axis equal
-    colormap(options.cMap)
-    set(gca,"Visible","off")
+    colormap(gca,options.cMap)
+    warning('off')
+    set(gca,"Position",[0 0 1 1],"Visible","off")
+    clim(gca,options.caxis)
+    warning('on')
 end
 
 
@@ -479,7 +529,7 @@ end
 
 
 % function to compare DRP measurement and indexed outcome
-function [posList] = checkIndexResult(dataNorm, indexResult, options)
+function checkDetail = checkIndexResult(dataNorm, indexResult, options)
     arguments
         dataNorm
         indexResult
@@ -496,7 +546,7 @@ function [posList] = checkIndexResult(dataNorm, indexResult, options)
     y = fix(y);
     x = fix(x);
     close(findobj("type","figure","name","Index Result"));
-    posList = [y; x];
+    posList = [y, x];
 
     drp_selected = zeros(nn,dataNorm.num_pixel);
     figure('Position',[100,100,200*(nn),200*2])
@@ -523,6 +573,10 @@ function [posList] = checkIndexResult(dataNorm, indexResult, options)
         text(x(ii)+5,y(ii)+5,int2str(ii),'FontSize',14,'FontWeight','bold')
     end
     hold off
+
+    checkDetail.posList = posList;
+    checkDetail.drpSelected = drp_selected;
+
 end
 
 
