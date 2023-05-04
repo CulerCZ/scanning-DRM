@@ -1,7 +1,7 @@
 %% scanning DRM data processing script
 
 [dataRaw, dataBG, posInfo] = loadRawData(...
-    AlEJMdefocusRaw20230425125522, AlEJMdefocusBG20230425125522, pixel_coord);
+    AlfromUKRaw20230418181452, AlfromUKBG20230418181452, pixel_coord);
 offset = 40;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
@@ -163,7 +163,7 @@ for ii = 1:5
     plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),posInfo)
 end
 
-    
+
 
 %% quick test of the functions
 dataKernel = kernelSmooth(dataNorm,kernelSize=1);
@@ -183,7 +183,18 @@ indexResult_kernel_1 = IndexEngine_sDRM(dataKernel, drpLib);
 figure("Position",[100 100 300 300])
 plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexResult.eulerMap(100,100,:))),dataNorm.posInfo)
 
-
+%% plot BG subtracted DRPs and raw DRPs
+figure(Position=[100 100 1600 400])
+tiledlayout(2,8,"TileSpacing","compact","padding","compact")
+% rand_idx = randi(size(dataRaw.drplist,1),8,1);
+for idx = 1:length(rand_idx)
+    nexttile(idx)
+    drptemp = dataRaw.drplist(rand_idx(idx),:) - dataBG.drp;
+    plotDRP(drptemp, posInfo_new, caxis=[prctile(drptemp,20),prctile(drptemp,95)])
+    nexttile(idx+length(rand_idx))
+    plotDRP(dataRaw.drplist(rand_idx(idx),:), posInfo_new,caxis= ...
+        [prctile(dataRaw.drplist(rand_idx(idx),:),20) prctile(dataRaw.drplist(rand_idx(idx),:),95)])
+end
 %% function supporting package
 % ----------------------------------------------------------------------------
 % function to load data
@@ -602,3 +613,6 @@ function plotDRPfromEBSD(posInfo,ebsd,idList,options)
         colormap(ax,options.cMap)
     end
 end
+
+
+
