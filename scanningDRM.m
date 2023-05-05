@@ -5,7 +5,9 @@
 offset = 40;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
-
+%%
+plotPara = calcPlotPixels(posInfo,resNum=20);
+%%
 figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
     reshape(median(dataNorm.drplist,2),dataNorm.num_x,dataNorm.num_y))
 
@@ -104,7 +106,7 @@ tiledlayout(4,4,"TileSpacing","compact","padding","compact")
 rand_idx = randi(size(drpLib.drpList,1),16);
 for idx = 1:length(rand_idx)
     nexttile(idx)
-    plotDRP(drpLib.drpList(rand_idx(idx),:), posInfo)
+    plotDRP(drpLib.drpList(rand_idx(idx),:), plotPara,format="3d")
 end
 %%
 figure(Position=[100 100 800 800])
@@ -112,11 +114,11 @@ tiledlayout(4,4,"TileSpacing","compact","padding","compact")
 rand_idx = randi(size(dataNorm.drplist,1),16);
 for idx = 1:length(rand_idx)
     nexttile(idx)
-    plotDRP(dataNorm.drplist(rand_idx(idx),:), posInfo)
+    plotDRP(dataNorm.drplist(rand_idx(idx),:), plotPara,format="3d")
 end
 
 %% select DRPs to be shown
-drp_selected = showSampleDRP(dataKernel, posInfo);
+drp_selected = showSampleDRP(dataKernel, plotPara,format="3d");
 
 %% check indexing results
 checkDetail = checkIndexResult(dataKernel, indexResult_kernel_1);
@@ -156,11 +158,11 @@ for ii = 1:5
     distanceEBSD(ii,1) = norm(drpEBSDtruth(ii,:)-checkDetail.drpSelected(ii,:));
     distanceEBSD(ii,2) = indexResultShort.distance(ii,1);
     nexttile(ii*3-1)
-    plotDRP(drpEBSDtruth(ii,:),posInfo)
+    plotDRP(drpEBSDtruth(ii,:),plotPara)
     nexttile(ii*3-2)
-    plotDRP(checkDetail.drpSelected(ii,:),posInfo)
+    plotDRP(checkDetail.drpSelected(ii,:),plotPara)
     nexttile(ii*3)
-    plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),posInfo)
+    plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),plotPara)
 end
 
 
@@ -181,7 +183,7 @@ indexResult_kernel_1 = IndexEngine_sDRM(dataKernel, drpLib);
 % figure, imshow(plot_ipf_map(indexResult_kernel_2.eulerMap),Border="tight")
 %%
 figure("Position",[100 100 300 300])
-plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexResult.eulerMap(100,100,:))),dataNorm.posInfo)
+plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexResult.eulerMap(100,100,:))),plotPara)
 
 %% plot BG subtracted DRPs and raw DRPs
 figure(Position=[100 100 1600 400])
@@ -190,9 +192,9 @@ tiledlayout(2,8,"TileSpacing","compact","padding","compact")
 for idx = 1:length(rand_idx)
     nexttile(idx)
     drptemp = dataRaw.drplist(rand_idx(idx),:) - dataBG.drp;
-    plotDRP(drptemp, posInfo_new, caxis=[prctile(drptemp,20),prctile(drptemp,95)])
+    plotDRP(drptemp, plotPara, caxis=[prctile(drptemp,20),prctile(drptemp,95)])
     nexttile(idx+length(rand_idx))
-    plotDRP(dataRaw.drplist(rand_idx(idx),:), posInfo_new,caxis= ...
+    plotDRP(dataRaw.drplist(rand_idx(idx),:), plotPara, caxis= ...
         [prctile(dataRaw.drplist(rand_idx(idx),:),20) prctile(dataRaw.drplist(rand_idx(idx),:),95)])
 end
 %% function supporting package
@@ -265,20 +267,64 @@ end
 
 
 % quick plot DRP in polar coordinates
-function polarPlotDRP(posInfo, drp, options)
+function plotPara = calcPlotPixels(posInfo,options)
     arguments
-        posInfo (1,1) struct
-        drp double
-        options.scatterSize (1,1) double = 50
+        posInfo
+        options.resNum (1,1) double = 20
     end
-    x = cosd(posInfo.theta).*cosd(posInfo.phi)./(1+sind(posInfo.theta));
-    y = cosd(posInfo.theta).*sind(posInfo.phi)./(1+sind(posInfo.theta));
-    scatter(x,y,options.scatterSize,drp,'filled')
-    axis equal
-    xlim([-1 1])
-    ylim([-1 1])
-    set(gca,'visible','off')
+    nn = length(posInfo.phi);
+    theta_list_original = sort(unique(posInfo.theta),'ascend');
+    theta_list = zeros(1,length(theta_list_original)+1);
+    for ii = 1:length(theta_list_original)
+        if theta_list_original(ii) <= 70
+            theta_list(ii) = theta_list_original(ii);
+        else
+            theta_list(ii) = (theta_list_original(ii) + theta_list_original(ii-1)) / 2;
+        end
+    end
+    theta_list(end) = 90;
+    resNum = options.resNum;
+    patchPoints = zeros(2*resNum,3,nn);
+    for ii = 1:nn
+        % datapoints in the lower range
+        if posInfo.theta(ii) <= 70
+            phi_temp = [posInfo.phi(ii)-5; posInfo.phi(ii)+5; posInfo.phi(ii)+5; posInfo.phi(ii)-5];
+            kk = find(theta_list_original == posInfo.theta(ii));
+            theta_temp = [theta_list(kk); theta_list(kk); theta_list(kk+1); theta_list(kk+1)];
     
+            phi = [linspace(phi_temp(1),phi_temp(2),resNum)'; linspace(phi_temp(3),phi_temp(4),resNum)'];
+            theta = [linspace(theta_temp(1),theta_temp(2),resNum)'; linspace(theta_temp(3),theta_temp(4),resNum)'];
+            [x,y,z] = sph2cart(phi.*degree, theta.*degree, ones(size(phi)));
+            patchPoints(:,:,ii) = [x,y,z];
+        else
+            switch find(theta_list_original == posInfo.theta(ii))
+                case 17
+                    jj = floor(posInfo.phi(ii) / 22.5);
+                    kk = find(theta_list_original == posInfo.theta(ii));
+                    phi = [linspace(22.5*jj,22.5*(jj+1),resNum)'; linspace(22.5*(jj+1),22.5*jj,resNum)'];
+                    theta = [linspace(theta_list(kk),theta_list(kk),resNum)'; linspace(theta_list(kk+1),theta_list(kk+1),resNum)'];
+                    [x,y,z] = sph2cart(phi.*degree, theta.*degree, ones(size(phi)));
+                    patchPoints(:,:,ii) = [x,y,z];
+                case 18
+                    jj = floor(posInfo.phi(ii) / 30);
+                    kk = find(theta_list_original == posInfo.theta(ii));
+                    phi = [linspace(30*jj,30*(jj+1),resNum)'; linspace(30*(jj+1),30*jj,resNum)'];
+                    theta = [linspace(theta_list(kk),theta_list(kk),resNum)'; linspace(theta_list(kk+1),theta_list(kk+1),resNum)'];
+                    [x,y,z] = sph2cart(phi.*degree, theta.*degree, ones(size(phi)));
+                    patchPoints(:,:,ii) = [x,y,z];
+                case 19
+                    jj = floor(posInfo.phi(ii) / 90);
+                    kk = find(theta_list_original == posInfo.theta(ii));
+                    phi = [linspace(90*jj,90*(jj+1),resNum)'; linspace(90*(jj+1),90*jj,resNum)'];
+                    theta = [linspace(theta_list(kk),theta_list(kk),resNum)'; linspace(theta_list(kk+1),theta_list(kk+1),resNum)'];
+                    [x,y,z] = sph2cart(phi.*degree, theta.*degree, ones(size(phi)));
+                    patchPoints(:,:,ii) = [x,y,z];
+            end
+        end
+    end
+    plotPara.x = squeeze(patchPoints(:,1,:));
+    plotPara.y = squeeze(patchPoints(:,2,:));
+    plotPara.z = squeeze(patchPoints(:,3,:));
 end
 
 
@@ -397,75 +443,102 @@ end
 
 
 % function to show DRP in 3d northern hemisphere
-function plotDRP(drplist, posInfo, options)
+% function plotDRP(drplist, posInfo, options)
+%     arguments
+%         drplist
+%         posInfo
+%         options.cMap (1,1) string = "Parula"
+%         options.type (1,1) string = "3d"
+%         options.caxis (1,2) double = [0,1]
+%     end
+%     nn = length(posInfo.phi);
+%     theta_list_original = sort(unique(posInfo.theta),'ascend');
+%     theta_list = zeros(1,length(theta_list_original)+1);
+%     for ii = 1:length(theta_list_original)
+%         if theta_list_original(ii) <= 70
+%             theta_list(ii) = theta_list_original(ii);
+%         else
+%             theta_list(ii) = (theta_list_original(ii) + theta_list_original(ii-1)) / 2;
+%         end
+%     end
+%     theta_list(end) = 90;
+%     hold on
+%     for ii = 1:nn
+%         % datapoints in the lower range
+%         if posInfo.theta(ii) <= 70
+%             phi_temp = [posInfo.phi(ii)-5; posInfo.phi(ii)+5; posInfo.phi(ii)+5; posInfo.phi(ii)-5];
+%             kk = find(theta_list_original == posInfo.theta(ii));
+%             theta_temp = [theta_list(kk); theta_list(kk); theta_list(kk+1); theta_list(kk+1)];
+%             [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
+%             patch(x,y,z,drplist(ii),"EdgeColor","none")
+%         else
+%             switch find(theta_list_original == posInfo.theta(ii))
+%                 case 17
+%                     phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(16))),'ascend');
+%                     jj = floor(posInfo.phi(ii) / 22.5);
+%                     phi_lower = phi_list_temp(phi_list_temp > jj*22.5 & phi_list_temp < (jj+1)*22.5);
+%                     phi_temp = [22.5*jj; phi_lower'; 22.5*(jj+1); 22.5*(jj+1); 22.5*jj];
+%                     kk = find(theta_list_original == posInfo.theta(ii));
+%                     theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
+%                     [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
+%                     patch(x,y,z,drplist(ii),"EdgeColor","none")
+%                 case 18
+%                     phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(17))),'ascend');
+%                     jj = floor(posInfo.phi(ii) / 30);
+%                     phi_lower = phi_list_temp(phi_list_temp > jj*30 & phi_list_temp < (jj+1)*30);
+%                     phi_temp = [30*jj; phi_lower'; 30*(jj+1); 30*(jj+1); 30*jj];
+%                     kk = find(theta_list_original == posInfo.theta(ii));
+%                     theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
+%                     [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
+%                     patch(x,y,z,drplist(ii),"EdgeColor","none")
+%                 case 19
+%                     phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(18))),'ascend');
+%                     jj = floor(posInfo.phi(ii) / 90);
+%                     phi_lower = phi_list_temp(phi_list_temp > jj*90 & phi_list_temp < (jj+1)*90);
+%                     phi_temp = [90*jj; phi_lower'; 90*(jj+1); 90*(jj+1); 90*jj];
+%                     kk = find(theta_list_original == posInfo.theta(ii));
+%                     theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
+%                     [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
+%                     patch(x,y,z,drplist(ii),"EdgeColor","none")
+%             end
+%         end
+%     end
+%     % axis and plot setting
+%     axis equal
+%     colormap(gca,options.cMap)
+%     warning('off')
+%     set(gca,"Position",[0 0 1 1],"Visible","off")
+%     clim(gca,options.caxis)
+%     warning('on')
+% end
+% 
+
+function plotDRP(drp,plotPara,options)
     arguments
-        drplist
-        posInfo
-        options.cMap (1,1) string = "Parula"
-        options.type (1,1) string = "3d"
-        options.caxis (1,2) double = [0,1]
+        drp
+        plotPara
+        options.cMap (1,1) string="jet"
+        options.format (1,1) string="3d"
+        options.caxis (1,2) double=[0 1]
     end
-    nn = length(posInfo.phi);
-    theta_list_original = sort(unique(posInfo.theta),'ascend');
-    theta_list = zeros(1,length(theta_list_original)+1);
-    for ii = 1:length(theta_list_original)
-        if theta_list_original(ii) <= 70
-            theta_list(ii) = theta_list_original(ii);
-        else
-            theta_list(ii) = (theta_list_original(ii) + theta_list_original(ii-1)) / 2;
-        end
+    x3 = plotPara.x;
+    y3 = plotPara.y;
+    z3 = plotPara.z;
+    if options.format == "3d"
+        patch(x3,y3,z3,drp,"EdgeColor","none")
+    elseif options.format == "2d"
+        x2 = x3./(1+z3);
+        y2 = y3./(1+z3);
+        patch(x2,y2,drp,"EdgeColor","none")
     end
-    theta_list(end) = 90;
-    hold on
-    for ii = 1:nn
-        % datapoints in the lower range
-        if posInfo.theta(ii) <= 70
-            phi_temp = [posInfo.phi(ii)-5; posInfo.phi(ii)+5; posInfo.phi(ii)+5; posInfo.phi(ii)-5];
-            kk = find(theta_list_original == posInfo.theta(ii));
-            theta_temp = [theta_list(kk); theta_list(kk); theta_list(kk+1); theta_list(kk+1)];
-            [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
-            patch(x,y,z,drplist(ii),"EdgeColor","none")
-        else
-            switch find(theta_list_original == posInfo.theta(ii))
-                case 17
-                    phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(16))),'ascend');
-                    jj = floor(posInfo.phi(ii) / 22.5);
-                    phi_lower = phi_list_temp(phi_list_temp > jj*22.5 & phi_list_temp < (jj+1)*22.5);
-                    phi_temp = [22.5*jj; phi_lower'; 22.5*(jj+1); 22.5*(jj+1); 22.5*jj];
-                    kk = find(theta_list_original == posInfo.theta(ii));
-                    theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
-                    [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
-                    patch(x,y,z,drplist(ii),"EdgeColor","none")
-                case 18
-                    phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(17))),'ascend');
-                    jj = floor(posInfo.phi(ii) / 30);
-                    phi_lower = phi_list_temp(phi_list_temp > jj*30 & phi_list_temp < (jj+1)*30);
-                    phi_temp = [30*jj; phi_lower'; 30*(jj+1); 30*(jj+1); 30*jj];
-                    kk = find(theta_list_original == posInfo.theta(ii));
-                    theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
-                    [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
-                    patch(x,y,z,drplist(ii),"EdgeColor","none")
-                case 19
-                    phi_list_temp = sort(unique(posInfo.phi(posInfo.theta == theta_list_original(18))),'ascend');
-                    jj = floor(posInfo.phi(ii) / 90);
-                    phi_lower = phi_list_temp(phi_list_temp > jj*90 & phi_list_temp < (jj+1)*90);
-                    phi_temp = [90*jj; phi_lower'; 90*(jj+1); 90*(jj+1); 90*jj];
-                    kk = find(theta_list_original == posInfo.theta(ii));
-                    theta_temp = [theta_list(kk)*ones(length(phi_lower)+2,1); theta_list(kk+1); theta_list(kk+1)];
-                    [x,y,z] = sph2cart(phi_temp.*degree, theta_temp.*degree, ones(size(phi_temp)));
-                    patch(x,y,z,drplist(ii),"EdgeColor","none")
-            end
-        end
-    end
-    % axis and plot setting
     axis equal
     colormap(gca,options.cMap)
     warning('off')
     set(gca,"Position",[0 0 1 1],"Visible","off")
     clim(gca,options.caxis)
     warning('on')
-end
 
+end
 
 % apply kernel smoothing on DRM original dataset
 function datakernel = kernelSmooth(dataNorm,options)
@@ -497,10 +570,10 @@ end
 
 
 % select position to show corresponding DRPs
-function drp_selected = showSampleDRP(dataNorm, posInfo, options)
+function drp_selected = showSampleDRP(dataNorm, plotPara, options)
     arguments
         dataNorm struct
-        posInfo struct
+        plotPara struct
         options.cMap (1,1) string = "jet"
     end
     figure('Name','demo_fig');
@@ -533,8 +606,7 @@ function drp_selected = showSampleDRP(dataNorm, posInfo, options)
         x_pos = y(ii);
         y_pos = x(ii);
         drp_selected(ii,:) = squeeze(dataNorm.drpMap(x_pos,y_pos,:));
-        plotDRP(drp_selected(ii,:), posInfo)
-        colormap(options.cMap)
+        plotDRP(drp_selected(ii,:), plotPara,cMap=options.cMap)
     end
 end
 
