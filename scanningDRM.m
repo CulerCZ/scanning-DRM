@@ -6,7 +6,12 @@ offset = 40;
 
 dataNorm = generateData(dataRaw, dataBG, posInfo, offset=offset);
 %%
+posInfo_new.phi = pixel_coord(1,:);
+posInfo_new.theta = pixel_coord(2,:);
+posInfo_new.phi(posInfo_new.theta<=70) = rem(270-posInfo_new.phi(posInfo_new.theta<=70)+360, 360);  % under current settings
+posInfo_new.phi(posInfo_new.theta>70) = rem(-90+posInfo_new.phi(posInfo_new.theta>70)+360,360);
 plotPara = calcPlotPixels(posInfo,resNum=20);
+dataNorm.plotPara = plotPara;
 %%
 figure, imagesc(unique(dataNorm.x), unique(dataNorm.y),...
     reshape(median(dataNorm.drplist,2),dataNorm.num_x,dataNorm.num_y))
@@ -20,7 +25,8 @@ indexResult = IndexEngine_sDRM(dataNorm, drpLib);
 figure, imshow(indexResult.distanceMap,[min(indexResult.distance),max(indexResult.distance)])
 colormap(jet)
 figure, imshow(plot_ipf_map(indexResult.eulerMap),Border="tight")
-
+%%
+figure, plotDRP(dataBG.drp,plotPara,caxis=[min(dataBG.drp),max(dataBG.drp)]);
 %% plot indexing results
 folderpath = ".\results_temp";  % save result image temporarily
 offset_values = 0:3:72;
@@ -115,22 +121,23 @@ rand_idx = randi(size(dataNorm.drplist,1),16);
 for idx = 1:length(rand_idx)
     nexttile(idx)
     plotDRP(dataNorm.drplist(rand_idx(idx),:), plotPara,format="3d")
+    colorbar
 end
 
 %% select DRPs to be shown
-drp_selected = showSampleDRP(dataKernel, plotPara,format="3d");
+drp_selected = showSampleDRP(dataNorm, plotPara,format="3d");
 
 %% check indexing results
-checkDetail = checkIndexResult(dataKernel, indexResult_kernel_1);
-% rot = rotation.byAxisAngle(vector3d.Z,90*degree);
-% ebsd_temp = rotate(ebsd_top,rot);
+% checkDetail = checkIndexResult(dataNorm, indexResult);
+rot = rotation.byAxisAngle(vector3d.Z,90*degree);
+ebsd_temp = rotate(ebsd_top,rot);
 % idList = [141151 124938 262255 282098 446028];
-% idList = [290283 655599 493316 450837 173017];
-% plotDRPfromEBSD(dataNorm.posInfo,ebsd_temp,idList);
+idList = [290283 655599 493316 450837 173017];
+plotDRPfromEBSD(dataNorm.posInfo,ebsd_temp,idList,plotPara);
 %% test new indexing engine with 5 cancidates
 k_temp = 10;
 dataSelected.drplist = checkDetail.drpSelected;
-dataSelected.posInfo = dataKernel.posInfo;
+dataSelected.posInfo = dataNorm.posInfo;
 dataSelected.num_x = 1;
 dataSelected.num_y = 5;
 dataSelected.drpMap = reshape(dataSelected.drplist,1,5,608);
@@ -158,11 +165,11 @@ for ii = 1:5
     distanceEBSD(ii,1) = norm(drpEBSDtruth(ii,:)-checkDetail.drpSelected(ii,:));
     distanceEBSD(ii,2) = indexResultShort.distance(ii,1);
     nexttile(ii*3-1)
-    plotDRP(drpEBSDtruth(ii,:),plotPara)
+    plotDRP(drpEBSDtruth(ii,:),plotPara,format="2d")
     nexttile(ii*3-2)
-    plotDRP(checkDetail.drpSelected(ii,:),plotPara)
+    plotDRP(checkDetail.drpSelected(ii,:),plotPara,format="2d")
     nexttile(ii*3)
-    plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),plotPara)
+    plotDRP(drpLib.drpList(indexResultShort.Idx(ii,1),:),plotPara,format="2d")
 end
 
 
@@ -188,7 +195,7 @@ plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexResult.eulerMap(100,100,:))),p
 %% plot BG subtracted DRPs and raw DRPs
 figure(Position=[100 100 1600 400])
 tiledlayout(2,8,"TileSpacing","compact","padding","compact")
-% rand_idx = randi(size(dataRaw.drplist,1),8,1);
+rand_idx = randi(size(dataRaw.drplist,1),8,1);
 for idx = 1:length(rand_idx)
     nexttile(idx)
     drptemp = dataRaw.drplist(rand_idx(idx),:) - dataBG.drp;
@@ -212,9 +219,10 @@ function [dataRaw, dataBG, posInfo] = loadRawData(...
     dataBG.offset = datasetBG(1);
     dataBG.gain = datasetBG(2);
     dataBG.drp = datasetBG(3:end);
-    posInfo.phi = pixel_coord(1,:);
-    posInfo.phi = rem(270-posInfo.phi+360, 360);  % under current settings
     posInfo.theta = pixel_coord(2,:);
+    posInfo.phi = pixel_coord(1,:);
+    posInfo.phi(posInfo.theta<=70) = rem(270-posInfo.phi(posInfo.theta<=70)+360, 360);  % under current settings
+    posInfo.phi(posInfo.theta>70) = rem(-90+posInfo.phi(posInfo.theta>70)+360,360);
     fprintf("Raw dataset is loaded!\n");
 end
 
@@ -640,11 +648,11 @@ function checkDetail = checkIndexResult(dataNorm, indexResult, options)
         x_pos = y(ii);
         y_pos = x(ii);
         drp_selected(ii,:) = squeeze(dataNorm.drpMap(x_pos,y_pos,:));
-        plotDRP(drp_selected(ii,:), dataNorm.posInfo)
+        plotDRP(drp_selected(ii,:), dataNorm.plotPara)
         colormap(ax, options.cMap)
         ax = nexttile(ii+nn);
         plotDRP(drpSimCone(dataNorm.posInfo, squeeze(indexEulerMap(x_pos,y_pos,:)), ...
-            options.faceting, options.fitting_para), dataNorm.posInfo);
+            options.faceting, options.fitting_para), dataNorm.plotPara);
         colormap(ax, options.cMap)
     end
     
@@ -664,11 +672,12 @@ end
 
 
 % plot DRPs based on EBSD ground truth by EBSD Id
-function plotDRPfromEBSD(posInfo,ebsd,idList,options)
+function plotDRPfromEBSD(posInfo,ebsd,idList,plotPara,options)
     arguments
         posInfo
         ebsd
         idList (1,:) double
+        plotPara (1,1) struct
         options.cMap (1,1) string = "jet"
         options.faceting (1,3) double = [1 0 0]
         options.fitting_para (1,6) double = [1,0.7,25,4,0.8,8]
@@ -681,8 +690,7 @@ function plotDRPfromEBSD(posInfo,ebsd,idList,options)
         rotTemp = ebsd(idList(ii)).rotations;
         eulerTemp = [rotTemp.phi1, rotTemp.Phi, rotTemp.phi2] ./ degree;
         plotDRP(drpSimCone(posInfo, eulerTemp, ...
-            options.faceting, options.fitting_para), posInfo);
-        colormap(ax,options.cMap)
+            options.faceting, options.fitting_para), plotPara, cMap=options.cMap);
     end
 end
 
